@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'ponleungek@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['userId', 'senderName', 'message', 'createdAt', 'timestamp'])
+        && data.keys().hasOnly(['userId', 'senderName', 'senderPhoto', 'message', 'photoUrl', 'createdAt', 'timestamp'])
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 100
+        && (!('senderPhoto' in data) || (data.senderPhoto is string && data.senderPhoto.size() <= 2048))
+        && data.message is string && data.message.size() > 0 && data.message.size() <= 3000
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 700000))
+        && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 64
+        && data.timestamp is timestamp;
+    }
+
+    function isValidRSVP(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'guestCount', 'attending', 'diet', 'createdAt', 'timestamp'])
+        && data.keys().hasOnly(['id', 'userId', 'name', 'phone', 'guestCount', 'attending', 'diet', 'blessing', 'photoUrl', 'submittedAt', 'createdAt', 'timestamp'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && data.guestCount is number && data.guestCount >= 1 && data.guestCount <= 20
+        && data.attending in ['yes', 'no']
+        && data.diet in ['none', 'vegetarian', 'halal']
+        && (!('blessing' in data) || (data.blessing is string && data.blessing.size() <= 3000))
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 700000))
+        && (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 64))
+        && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 64
+        && data.timestamp is timestamp;
+    }
+
+    function isValidGuestPhoto(data) {
+      return data.keys().hasAll(['imageUrl', 'uploadedBy', 'likes', 'userId', 'createdAt', 'timestamp'])
+        && data.keys().hasOnly(['imageUrl', 'uploadedBy', 'caption', 'likes', 'userId', 'createdAt', 'timestamp'])
+        && data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() <= 950000
+        && data.uploadedBy is string && data.uploadedBy.size() > 0 && data.uploadedBy.size() <= 120
+        && (!('caption' in data) || (data.caption is string && data.caption.size() <= 500))
+        && data.likes is number && data.likes >= 0 && data.likes <= 100000
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 64
+        && data.timestamp is timestamp;
+    }
+
+    // Connectivity verification path
+    match /test/{testId} {
+      allow get: if testId == 'connection';
+    }
+
+    // Admins collection (read-only lookup)
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    // Users collection (PII isolated to owner or admin)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(userId) && isOwner(userId) && isVerified();
+      allow delete: if false;
+    }
+
+    // Messages / Guestbook collection
+    match /messages/{messageId} {
+      allow get: if isValidId(messageId);
+      allow list: if true;
+      allow create: if isValidId(messageId)
+        && isValidMessage(incoming())
+        && incoming().timestamp == request.time
+        && ((!isSignedIn() && incoming().userId == 'guest-anon') || (isSignedIn() && incoming().userId == request.auth.uid));
+      allow update: if isValidId(messageId)
+        && isValidMessage(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().timestamp == existing().timestamp
+        && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+      allow delete: if isValidId(messageId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+    }
+
+    // RSVPs collection (PII protected: read restricted to owner or admin)
+    match /rsvps/{rsvpId} {
+      allow get: if isValidId(rsvpId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerified() && existing().userId == request.auth.uid);
+      allow create: if isValidId(rsvpId)
+        && isValidRSVP(incoming())
+        && incoming().timestamp == request.time
+        && ((!isSignedIn() && incoming().userId == 'guest-anon') || (isSignedIn() && incoming().userId == request.auth.uid));
+      allow update: if isValidId(rsvpId)
+        && isValidRSVP(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().timestamp == existing().timestamp
+        && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+      allow delete: if isValidId(rsvpId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+    }
+
+    // Guest Photos & Memories collection
+    match /guest_photos/{photoId} {
+      allow get: if isValidId(photoId);
+      allow list: if true;
+      allow create: if isValidId(photoId)
+        && isValidGuestPhoto(incoming())
+        && incoming().timestamp == request.time
+        && ((!isSignedIn() && incoming().userId == 'guest-anon') || (isSignedIn() && incoming().userId == request.auth.uid));
+      allow update: if isValidId(photoId)
+        && isValidGuestPhoto(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().timestamp == existing().timestamp
+        && (
+          isAdmin() ||
+          (
+            incoming().imageUrl == existing().imageUrl &&
+            incoming().uploadedBy == existing().uploadedBy &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['likes']) &&
+            incoming().likes == existing().likes + 1
+          )
+        );
+      allow delete: if isValidId(photoId) && (isAdmin() || (isVerified() && existing().userId == request.auth.uid));
+    }
+  }
+}

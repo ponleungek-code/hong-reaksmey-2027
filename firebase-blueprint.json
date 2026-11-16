@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized wedding album administrator record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "role": { "type": "string", "enum": ["admin"] }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 2048 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "displayName"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Guest messages and blessings sent to the bride and groom",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderPhoto": { "type": "string", "maxLength": 2048 },
+        "message": { "type": "string", "maxLength": 3000 },
+        "photoUrl": { "type": "string", "maxLength": 700000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "senderName", "message", "createdAt"]
+    },
+    "RSVP": {
+      "title": "RSVP",
+      "description": "Guest wedding attendance response with optional photo and wishes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "guestCount": { "type": "number" },
+        "attending": { "type": "string", "enum": ["yes", "no"] },
+        "diet": { "type": "string", "enum": ["none", "vegetarian", "halal"] },
+        "blessing": { "type": "string", "maxLength": 3000 },
+        "photoUrl": { "type": "string", "maxLength": 700000 },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name", "guestCount", "attending", "createdAt"]
+    },
+    "GuestPhoto": {
+      "title": "GuestPhoto",
+      "description": "Photos uploaded by wedding guests with caption and likes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "imageUrl": { "type": "string", "maxLength": 950000 },
+        "uploadedBy": { "type": "string", "maxLength": 120 },
+        "caption": { "type": "string", "maxLength": 500 },
+        "likes": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "imageUrl", "uploadedBy", "likes", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": "Admin",
+      "description": "Authorized administrator registry"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Live guestbook messages and blessings"
+    },
+    "/rsvps/{rsvpId}": {
+      "schema": "RSVP",
+      "description": "Guest RSVP records"
+    },
+    "/guest_photos/{photoId}": {
+      "schema": "GuestPhoto",
+      "description": "Collection of guest uploaded photos and memories"
+    }
+  }
+}
